@@ -1,0 +1,26 @@
+# NOTE: pyaudio requires portaudio system library.
+# macOS: brew install portaudio && pip install pyaudio
+# The rest of the dependencies install without system packages.
+
+# Core UI
+PySide6==6.7.2
+
+# PDF engine
+PyMuPDF==1.24.10
+
+# Computer vision
+mediapipe==0.10.14
+opencv-python==4.10.0.84
+numpy==1.26.4
+
+# Voice
+faster-whisper==1.0.3
+pyaudio==0.2.14
+webrtcvad==2.0.10
+
+# ML
+torch==2.3.1
+scikit-learn==1.5.1
+
+# Dev / test
+pytest==8.3.2

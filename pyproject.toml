@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spectra"
+version = "0.1.0"
+description = "Multimodal PDF reading interface — gesture, gaze, voice"
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6>=6.7.0",
+    "PyMuPDF>=1.24.0",
+    "mediapipe>=0.10.14",
+    "opencv-python>=4.10.0",
+    "numpy>=1.26.0",
+    "faster-whisper>=1.0.3",
+    "pyaudio>=0.2.14",
+    "webrtcvad>=2.0.10",
+    "torch>=2.3.0",
+    "scikit-learn>=1.5.0",
+]
+
+[project.scripts]
+spectra = "spectra.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Model weights — download via scripts/download_*.py instead
+models/
+!models/.gitkeep
+
+# Evaluation outputs (generated, not source)
+evaluation/*.png
+evaluation/*.csv
+evaluation/*.json
+evaluation/*_report.md
+
+# Gaze calibration data (per-user, not committed)
+.spectra/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# JetBrains IDEs
+.idea/
+*.iml
+
+# VS Code
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.*
+
+# Build artifacts
+*.spec
