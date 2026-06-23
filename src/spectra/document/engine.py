@@ -1,17 +1,18 @@
 import threading
 from pathlib import Path
 
-import fitz  # PyMuPDF
+import fitz
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QImage, QPixmap
 
+from spectra.document.word_box import WordBox, extract_words
 
 _RENDER_CACHE_SIZE = 6
 _WORD_CACHE_SIZE = 20
 
 
 class DocumentEngine(QObject):
-    page_rendered = Signal(int, QPixmap)   # page_num, pixmap
+    page_rendered = Signal(int, QPixmap)
     page_count_changed = Signal(int)
 
     def __init__(self, parent=None):
@@ -21,10 +22,9 @@ class DocumentEngine(QObject):
         self._current_page = 0
         self._lock = threading.Lock()
         self._render_cache: dict[int, QPixmap] = {}
-        self._word_cache: dict[int, list] = {}
-        self._prefetch_thread: threading.Thread | None = None
+        self._word_cache: dict[int, list[WordBox]] = {}
 
-    # ── File operations ──────────────────────────────────────────────────────
+    # ── File ─────────────────────────────────────────────────────────────────
 
     def open(self, path: str | Path) -> None:
         path = Path(path)
@@ -49,7 +49,7 @@ class DocumentEngine(QObject):
                 self._doc.close()
                 self._doc = None
 
-    # ── Navigation ───────────────────────────────────────────────────────────
+    # ── Navigation ────────────────────────────────────────────────────────────
 
     @property
     def current_page(self) -> int:
@@ -73,7 +73,7 @@ class DocumentEngine(QObject):
     def prev_page(self) -> None:
         self.go_to_page(self._current_page - 1)
 
-    # ── Rendering ────────────────────────────────────────────────────────────
+    # ── Rendering ─────────────────────────────────────────────────────────────
 
     def _render_page(self, page_num: int) -> QPixmap:
         if page_num in self._render_cache:
@@ -81,64 +81,62 @@ class DocumentEngine(QObject):
         with self._lock:
             assert self._doc is not None
             page = self._doc[page_num]
-            mat = fitz.Matrix(2.0, 2.0)  # 2× for retina / HiDPI
-            pix = page.get_pixmap(matrix=mat, alpha=False)
+            pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0), alpha=False)
         img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
         pixmap = QPixmap.fromImage(img)
-        # Evict oldest entry if cache is full
         if len(self._render_cache) >= _RENDER_CACHE_SIZE:
-            oldest = next(iter(self._render_cache))
-            del self._render_cache[oldest]
+            del self._render_cache[next(iter(self._render_cache))]
         self._render_cache[page_num] = pixmap
         return pixmap
 
     def _render_and_emit(self, page_num: int) -> None:
-        pixmap = self._render_page(page_num)
-        self.page_rendered.emit(page_num, pixmap)
+        self.page_rendered.emit(page_num, self._render_page(page_num))
 
     def _schedule_prefetch(self, current: int) -> None:
-        pages = [current + 1, current - 1, current + 2, current - 2]
-        pages = [p for p in pages if 0 <= p < self.page_count and p not in self._render_cache]
+        candidates = [current + 1, current - 1, current + 2, current - 2]
+        pages = [p for p in candidates if 0 <= p < self.page_count and p not in self._render_cache]
         if not pages:
             return
-
-        def prefetch():
+        def _prefetch():
             for p in pages:
                 self._render_page(p)
+        threading.Thread(target=_prefetch, daemon=True).start()
 
-        t = threading.Thread(target=prefetch, daemon=True)
-        t.start()
-        self._prefetch_thread = t
+    def invalidate_render_cache(self, page_num: int) -> None:
+        self._render_cache.pop(page_num, None)
 
-    # ── Word extraction ───────────────────────────────────────────────────────
+    # ── Words ─────────────────────────────────────────────────────────────────
 
-    def get_words(self, page_num: int) -> list[tuple]:
-        """Return reading-order word list. Each tuple: (x0,y0,x1,y1,text,block,line,word)."""
+    def get_words(self, page_num: int) -> list[WordBox]:
+        """Return reading-order WordBox list (cached, LRU eviction)."""
         if page_num in self._word_cache:
             return self._word_cache[page_num]
         with self._lock:
             assert self._doc is not None
             page = self._doc[page_num]
-            words = page.get_text("words")
-        words.sort(key=lambda w: (w[5], w[6], w[7]))  # block_no, line_no, word_no
+            words = extract_words(page)
         if len(self._word_cache) >= _WORD_CACHE_SIZE:
-            oldest = next(iter(self._word_cache))
-            del self._word_cache[oldest]
+            del self._word_cache[next(iter(self._word_cache))]
         self._word_cache[page_num] = words
         return words
 
+    def page_rect(self, page_num: int) -> fitz.Rect:
+        with self._lock:
+            assert self._doc is not None
+            return self._doc[page_num].rect
+
     def is_scanned(self, page_num: int) -> bool:
-        """True if page has no text layer (image-only / scanned PDF)."""
+        if self._doc is None:
+            return False
         words = self.get_words(page_num)
         if words:
             return False
         with self._lock:
             assert self._doc is not None
-            page = self._doc[page_num]
-            images = page.get_images()
+            images = self._doc[page_num].get_images()
         return len(images) > 0
 
-    # ── Annotation save ───────────────────────────────────────────────────────
+    # ── Annotations ───────────────────────────────────────────────────────────
 
     def save_incremental(self) -> None:
         if self._doc is not None and self._path is not None:

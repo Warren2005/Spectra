@@ -26,6 +26,9 @@ coverage.xml
 models/
 !models/.gitkeep
 
+# Training data — generated locally, not committed
+data/
+
 # Evaluation outputs (generated, not source)
 evaluation/*.png
 evaluation/*.csv
