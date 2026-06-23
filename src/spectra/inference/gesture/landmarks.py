@@ -1,12 +1,18 @@
-"""MediaPipe Hands wrapper with One-Euro filter for landmark smoothing."""
+"""MediaPipe Hands wrapper (Tasks API, 0.10+) with One-Euro filter."""
 import time
 from enum import Enum
+from pathlib import Path
 from typing import Optional
 
 import mediapipe as mp
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision as mp_vision
 import numpy as np
 
-# Landmark index constants (MediaPipe hand topology)
+# Default model path
+_MODEL_PATH = Path(__file__).parents[4] / "models" / "hand_landmarker.task"
+
+# Landmark index constants
 WRIST = 0
 THUMB_CMC, THUMB_MCP, THUMB_IP, THUMB_TIP = 1, 2, 3, 4
 INDEX_MCP, INDEX_PIP, INDEX_DIP, INDEX_TIP = 5, 6, 7, 8
@@ -15,8 +21,7 @@ RING_MCP, RING_PIP, RING_DIP, RING_TIP = 13, 14, 15, 16
 PINKY_MCP, PINKY_PIP, PINKY_DIP, PINKY_TIP = 17, 18, 19, 20
 N_LANDMARKS = 21
 
-# (21, 3) numpy array of normalized [x, y, z] coords
-LandmarkArray = np.ndarray
+LandmarkArray = np.ndarray  # shape (21, 3)
 
 
 class Hand(str, Enum):
@@ -29,9 +34,8 @@ HandResult = dict[Hand, LandmarkArray]
 
 class OneEuroFilter:
     """
-    Adaptive low-pass filter that reduces smoothing during fast movement
-    and increases it when the signal is near-stationary. Superior to a
-    simple moving average for gesture interfaces.
+    Adaptive low-pass filter: reduces smoothing during fast movement,
+    increases it at rest. Superior to a moving average for gesture input.
     """
 
     def __init__(self, freq: float = 30.0, mincutoff: float = 1.0,
@@ -54,12 +58,10 @@ class OneEuroFilter:
             self._x = x.copy()
             self._dx = np.zeros_like(x)
             return self._x.copy()
-
+        assert self._dx is not None
         dx = (x - self._x) * self._freq
         alpha_d = self._alpha(np.full_like(x, self._dcutoff), self._freq)
-        assert self._dx is not None
         self._dx = alpha_d * dx + (1.0 - alpha_d) * self._dx
-
         cutoff = self._mincutoff + self._beta * np.abs(self._dx)
         alpha = self._alpha(cutoff, self._freq)
         self._x = alpha * x + (1.0 - alpha) * self._x
@@ -72,50 +74,65 @@ class OneEuroFilter:
 
 class LandmarkDetector:
     """
-    Wraps MediaPipe Hands. Applies One-Euro filter per hand.
-    Runs on whatever thread process() is called from.
+    Wraps MediaPipe HandLandmarker (Tasks API). Applies One-Euro filter
+    per hand. Runs on whatever thread process() is called from.
     """
 
-    def __init__(self, mincutoff: float = 1.0, beta: float = 0.1,
-                 min_detection_confidence: float = 0.7,
-                 min_tracking_confidence: float = 0.5):
-        self._hands = mp.solutions.hands.Hands(
-            static_image_mode=False,
-            max_num_hands=2,
-            min_detection_confidence=min_detection_confidence,
+    def __init__(
+        self,
+        model_path: Optional[Path] = None,
+        mincutoff: float = 1.0,
+        beta: float = 0.1,
+        min_detection_confidence: float = 0.7,
+        min_tracking_confidence: float = 0.5,
+    ):
+        path = str(model_path or _MODEL_PATH)
+        base_opts = mp_python.BaseOptions(model_asset_path=path)
+        opts = mp_vision.HandLandmarkerOptions(
+            base_options=base_opts,
+            running_mode=mp_vision.RunningMode.VIDEO,
+            num_hands=2,
+            min_hand_detection_confidence=min_detection_confidence,
+            min_hand_presence_confidence=min_tracking_confidence,
             min_tracking_confidence=min_tracking_confidence,
         )
+        self._landmarker = mp_vision.HandLandmarker.create_from_options(opts)
         self._filters: dict[Hand, OneEuroFilter] = {
             Hand.LEFT: OneEuroFilter(mincutoff=mincutoff, beta=beta),
             Hand.RIGHT: OneEuroFilter(mincutoff=mincutoff, beta=beta),
         }
         self._last_seen: dict[Hand, float] = {}
+        self._start_time = time.time()
 
     def process(self, frame_bgr: np.ndarray) -> HandResult:
-        """Return filtered landmarks keyed by Hand enum. Empty dict = no hands."""
+        """Return filtered landmarks keyed by Hand enum."""
         import cv2
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        results = self._hands.process(rgb)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        timestamp_ms = int((time.time() - self._start_time) * 1000)
+        result = self._landmarker.detect_for_video(mp_image, timestamp_ms)
 
         detected: HandResult = {}
         now = time.time()
 
-        if results.multi_hand_landmarks:
-            for landmarks, handedness in zip(
-                results.multi_hand_landmarks,
-                results.multi_handedness,
+        if result.hand_landmarks:
+            for hand_landmarks, handedness_list in zip(
+                result.hand_landmarks, result.handedness
             ):
-                label = handedness.classification[0].label
-                score = handedness.classification[0].score
+                label = handedness_list[0].category_name  # "Left" or "Right"
+                score = handedness_list[0].score
                 if score < 0.7:
                     continue
                 hand = Hand(label)
-                raw = np.array([[lm.x, lm.y, lm.z] for lm in landmarks.landmark])
+                raw = np.array(
+                    [[lm.x, lm.y, lm.z] for lm in hand_landmarks],
+                    dtype=np.float32,
+                )
                 filtered = self._filters[hand](raw.flatten()).reshape(N_LANDMARKS, 3)
                 detected[hand] = filtered
                 self._last_seen[hand] = now
 
-        # Reset filter for hands absent > 0.5 s to avoid stale state
+        # Reset filter for hands absent > 0.5s
         for hand in list(self._last_seen):
             if now - self._last_seen[hand] > 0.5:
                 self._filters[hand].reset()
@@ -124,4 +141,4 @@ class LandmarkDetector:
         return detected
 
     def close(self) -> None:
-        self._hands.close()
+        self._landmarker.close()

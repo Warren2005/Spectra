@@ -8,11 +8,11 @@ import cv2
 from PySide6.QtCore import Qt, QThread, Slot
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QSizePolicy,
     QStatusBar,
     QWidget,
 )
@@ -49,7 +49,11 @@ class MainWindow(QMainWindow):
         self._connect_signals()
 
         self._gesture_thread.start()
-        self._webcam.start()
+        if not self._webcam.start():
+            self._cam_label.setText("No camera")
+            self._cam_label.setStyleSheet(
+                "background: #1a1a1a; color: #666; border: 1px solid #444; font-size: 11px;"
+            )
 
     # ── UI construction ───────────────────────────────────────────────────────
 
@@ -148,10 +152,7 @@ class MainWindow(QMainWindow):
             return
 
         page_rect = self._engine.page_rect(page_num)
-        # Convert WordBox list to word tuples for snap_to_word
-        from spectra.document.word_box import WordBox as WB
-        wboxes = words  # already WordBox list from engine
-        word = snap_to_word(wboxes, norm_x, norm_y, page_rect.width, page_rect.height)
+        word = snap_to_word(words, norm_x, norm_y, page_rect.width, page_rect.height)
         self._cursor_word = word
 
         # Show selection preview if anchor is set
@@ -160,7 +161,7 @@ class MainWindow(QMainWindow):
             b_idx = word.index
             if a_idx is not None:
                 lo, hi = sorted([a_idx, b_idx])
-                sel = wboxes[lo : hi + 1]
+                sel = words[lo : hi + 1]
                 rects = HighlightManager.selection_to_rects(sel)
                 page_w, page_h = page_rect.width, page_rect.height
                 norms = [
@@ -200,7 +201,6 @@ class MainWindow(QMainWindow):
 
     def _handle_code_copy(self) -> None:
         from spectra.document.code_detect import detect_code_blocks, extract_code_text
-        from PySide6.QtWidgets import QApplication
         page_num = self._engine.current_page
         if self._engine._doc is None:
             return

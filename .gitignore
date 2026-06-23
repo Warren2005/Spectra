@@ -25,6 +25,8 @@ coverage.xml
 # Model weights — download via scripts/download_*.py instead
 models/
 !models/.gitkeep
+# Ensure gitkeep is not overridden
+!models/
 
 # Training data — generated locally, not committed
 data/
@@ -64,3 +66,8 @@ evaluation/*_report.md
 
 # Build artifacts
 *.spec
+
+# Test / scratch PDFs and their annotation sidecars
+test_*.pdf
+test_*.pdf.spectra
+*.spectra

@@ -45,7 +45,12 @@ class DocumentEngine(QObject):
     def close(self) -> None:
         with self._lock:
             if self._doc is not None:
-                self._doc.save(str(self._path), garbage=4, deflate=True)
+                try:
+                    if self._doc.is_dirty:
+                        # Compact-save only when the doc has been modified
+                        self._doc.saveIncr()
+                except Exception:
+                    pass
                 self._doc.close()
                 self._doc = None
 
