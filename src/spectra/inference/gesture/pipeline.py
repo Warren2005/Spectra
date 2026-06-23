@@ -75,6 +75,13 @@ class GesturePipeline(QObject):
         if self._fsm.state == GestureState.IDLE or right is None:
             return
 
+        # Mirror x-axis so cursor and swipe direction match the user's perspective.
+        # The webcam captures unflipped (camera-perspective) frames: moving your
+        # hand to the right in real life moves it to the LEFT in the raw frame.
+        # Flipping x here makes "right swipe" and cursor position intuitive.
+        right = right.copy()
+        right[:, 0] = 1.0 - right[:, 0]
+
         # Two-finger point check (always rule-based — need index tip coords)
         if is_two_finger_point(right):
             self._fsm.on_two_finger_point(

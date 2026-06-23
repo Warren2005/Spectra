@@ -98,8 +98,9 @@ class LandmarkDetector:
         )
         self._landmarker = mp_vision.HandLandmarker.create_from_options(opts)
         self._filters: dict[Hand, OneEuroFilter] = {
-            Hand.LEFT: OneEuroFilter(mincutoff=mincutoff, beta=beta),
-            Hand.RIGHT: OneEuroFilter(mincutoff=mincutoff, beta=beta),
+            # Lower beta → less reactivity to velocity spikes → less jitter at rest
+            Hand.LEFT: OneEuroFilter(mincutoff=mincutoff, beta=beta * 0.5),
+            Hand.RIGHT: OneEuroFilter(mincutoff=mincutoff, beta=beta * 0.5),
         }
         self._last_seen: dict[Hand, float] = {}
         self._start_time = time.time()

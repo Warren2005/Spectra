@@ -72,7 +72,7 @@ class SwipeDetector:
     over a sliding window of recent frames.
     """
     WINDOW = 8
-    THRESHOLD = 0.12   # minimum net x-displacement (in normalized coords)
+    THRESHOLD = 0.10   # minimum net x-displacement (in normalized coords)
 
     def __init__(self):
         self._history: deque[float] = deque(maxlen=self.WINDOW)

@@ -40,6 +40,9 @@ class MainWindow(QMainWindow):
         self._annotation = AnnotationManager(self._engine)
         self._cursor_word: Optional[WordBox] = None
 
+        self._cursor_frozen = False          # True while anchor is set
+        self._last_cursor: tuple[float, float] = (0.5, 0.5)
+
         self._webcam = WebcamCapture()
         self._gesture_thread = QThread(self)
         self._gesture = GesturePipeline()
@@ -140,8 +143,17 @@ class MainWindow(QMainWindow):
         elif intent == "CODE_COPY":
             self._handle_code_copy()
 
+    _CURSOR_DEAD_ZONE = 0.012  # minimum movement before cursor updates
+
     def _handle_cursor_move(self, cursor: tuple) -> None:
+        if self._cursor_frozen:
+            return
+
         norm_x, norm_y = cursor
+        lx, ly = self._last_cursor
+        if abs(norm_x - lx) < self._CURSOR_DEAD_ZONE and abs(norm_y - ly) < self._CURSOR_DEAD_ZONE:
+            return
+        self._last_cursor = (norm_x, norm_y)
         self._pdf_widget.set_cursor(norm_x, norm_y)
 
         page_num = self._engine.current_page
@@ -253,6 +265,12 @@ class MainWindow(QMainWindow):
         self._hud.set_state(state_name)
         if state_name == "IDLE":
             self._pdf_widget.clear_cursor()
+            self._cursor_frozen = False
+        elif state_name == "ANCHOR_SET":
+            # Freeze cursor so pinch motion doesn't shift the snapped word
+            self._cursor_frozen = True
+        elif state_name == "CURSOR":
+            self._cursor_frozen = False
 
     # ── File open ─────────────────────────────────────────────────────────────
 
