@@ -15,7 +15,11 @@ def main() -> None:
 
     # Open file passed as CLI arg, or show open dialog
     if len(sys.argv) > 1:
-        window._engine.open(sys.argv[1])
+        try:
+            window._engine.open(sys.argv[1])
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(window, "Cannot open file", str(e))
     else:
         window.open_file()
 

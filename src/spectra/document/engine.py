@@ -30,14 +30,21 @@ class DocumentEngine(QObject):
         path = Path(path)
         with self._lock:
             if self._doc is not None:
-                self._doc.save(str(self._path), garbage=4, deflate=True)
+                try:
+                    if self._doc.is_dirty:
+                        self._doc.saveIncr()
+                except Exception:
+                    pass
                 self._doc.close()
             self._doc = fitz.open(str(path))
             self._path = path
             self._render_cache.clear()
             self._word_cache.clear()
             self._current_page = 0
+
         assert self._doc is not None
+        if len(self._doc) == 0:
+            raise ValueError(f"PDF has no pages (file may be corrupted): {path}")
         self.page_count_changed.emit(len(self._doc))
         self._render_and_emit(0)
         self._schedule_prefetch(0)

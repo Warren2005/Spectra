@@ -7,25 +7,25 @@ import torch
 
 from spectra.inference.gesture.classifier import (
     CLASSES, FEATURE_DIM, N_CLASSES, WINDOW_SIZE,
-    GestureCNN, GestureClassifier, IDX_TO_CLASS,
+    GestureCNN, GestureCNNv2, GestureClassifier, IDX_TO_CLASS,
 )
 
 
 class TestGestureCNN:
     def test_output_shape(self):
-        model = GestureCNN()
+        model = GestureCNNv2()
         x = torch.randn(4, WINDOW_SIZE, FEATURE_DIM)
         out = model(x)
         assert out.shape == (4, N_CLASSES)
 
     def test_single_sample(self):
-        model = GestureCNN()
+        model = GestureCNNv2()
         x = torch.randn(1, WINDOW_SIZE, FEATURE_DIM)
         out = model(x)
         assert out.shape == (1, N_CLASSES)
 
     def test_output_is_logits_not_probs(self):
-        model = GestureCNN()
+        model = GestureCNNv2()
         x = torch.randn(1, WINDOW_SIZE, FEATURE_DIM)
         out = model(x)
         # Logits can be negative; softmax output would all be > 0 and sum to 1
@@ -48,7 +48,7 @@ class TestGestureClassifier:
 
     def test_returns_none_before_window_full_even_with_weights(self, tmp_path):
         # Save an untrained (random weights) model
-        model = GestureCNN()
+        model = GestureCNNv2()
         path = tmp_path / "gesture_cnn.pt"
         torch.save(model.state_dict(), str(path))
 
@@ -62,7 +62,7 @@ class TestGestureClassifier:
         assert gesture is None  # window not full yet
 
     def test_produces_output_after_window_full(self, tmp_path):
-        model = GestureCNN()
+        model = GestureCNNv2()
         path = tmp_path / "gesture_cnn.pt"
         torch.save(model.state_dict(), str(path))
 
@@ -77,7 +77,7 @@ class TestGestureClassifier:
         assert 0.0 <= last_conf <= 1.0
 
     def test_reset_window_clears_state(self, tmp_path):
-        model = GestureCNN()
+        model = GestureCNNv2()
         path = tmp_path / "gesture_cnn.pt"
         torch.save(model.state_dict(), str(path))
 
@@ -93,7 +93,7 @@ class TestGestureClassifier:
         assert not clf.ready
 
     def test_output_class_in_vocabulary(self, tmp_path):
-        model = GestureCNN()
+        model = GestureCNNv2()
         path = tmp_path / "gesture_cnn.pt"
         torch.save(model.state_dict(), str(path))
 
